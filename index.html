@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QR Scanner Popup</title>
+  <script src="https://unpkg.com/html5-qrcode"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    body { 
+      font-family: 'Sarabun', sans-serif; 
+      background: #f4f7f6; 
+      margin: 0; 
+      padding: 20px; 
+      text-align: center; 
+    }
+    #reader { 
+      width: 100%; 
+      max-width: 400px; 
+      margin: 0 auto; 
+      background: white; 
+      border-radius: 12px; 
+      overflow: hidden; 
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1); 
+      border: 2px dashed #dee2e6;
+    }
+    #status { 
+      margin-top: 15px; 
+      font-size: 18px; 
+      font-weight: 600; 
+      color: #6c757d; 
+    }
+    .btn-close-popup {
+      margin-top: 20px; 
+      padding: 10px 24px; 
+      background: #dc3545; 
+      color: white; 
+      border: none; 
+      border-radius: 8px; 
+      cursor: pointer; 
+      font-size: 16px;
+      font-family: 'Sarabun', sans-serif;
+      box-shadow: 0 4px 8px rgba(220, 53, 69, 0.2);
+    }
+  </style>
+</head>
+<body>
+  <h3 style="color: #333538; margin-bottom: 20px;">📷 สแกน QR Code เช็คชื่อ</h3>
+  <div id="reader"></div>
+  <div id="status">กำลังรอกล้อง...</div>
+  <p style="color: #888; font-size: 14px; margin-top: 5px;">(สแกนต่อเนื่องได้เลย ระบบหลักจะเช็คชื่อให้อัตโนมัติ)</p>
+  
+  <button class="btn-close-popup" onclick="window.close()">ปิดหน้าต่างกล้อง</button>
+
+  <script>
+    const html5QrCode = new Html5Qrcode("reader");
+    const statusDiv = document.getElementById('status');
+    let lastScan = ""; // กันการสแกนรหัสเดิมซ้ำรัวๆ
+
+    html5QrCode.start(
+      { facingMode: "environment" },
+      { fps: 10, qrbox: { width: 250, height: 250 } },
+      (decodedText) => {
+        const id = decodedText.trim();
+        if (id !== lastScan) {
+          lastScan = id;
+          statusDiv.innerHTML = `<span style="color: #198754;">✅ สแกนล่าสุดรหัส: ${id}</span>`;
+          
+          // ส่งค่ากลับไปยังหน้า Apps Script (หน้าต่างแม่)
+          if (window.opener) {
+            window.opener.postMessage({ type: 'QR_SCANNED', id: id }, "*");
+          }
+
+          // หน่วงเวลา 2 วินาทีก่อนให้สแกนรหัสเดิมได้อีก
+          setTimeout(() => { 
+            lastScan = ""; 
+            statusDiv.innerHTML = "พร้อมสแกนรหัสต่อไป..."; 
+          }, 2000);
+        }
+      }
+    ).catch(err => {
+      statusDiv.innerHTML = `<span style="color: #dc3545;">❌ ไม่สามารถเข้าถึงกล้องได้ กรุณาอนุญาตสิทธิ์</span>`;
+    });
+  </script>
+</body>
+</html>
