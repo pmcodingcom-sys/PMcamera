@@ -42,28 +42,46 @@
       font-family: 'Sarabun', sans-serif;
       box-shadow: 0 4px 8px rgba(220, 53, 69, 0.2);
     }
+    /* เอฟเฟกต์กระพริบตอนสแกนติด */
+    .flash { animation: flashEffect 0.3s ease-out; }
+    @keyframes flashEffect {
+      0% { background-color: #4CAF50; }
+      100% { background-color: white; }
+    }
   </style>
 </head>
 <body>
   <h3 style="color: #333538; margin-bottom: 20px;">📷 สแกน QR Code เช็คชื่อ</h3>
   <div id="reader"></div>
-  <div id="status">กำลังรอกล้อง...</div>
-  <p style="color: #888; font-size: 14px; margin-top: 5px;">(สแกนต่อเนื่องได้เลย ระบบหลักจะเช็คชื่อให้อัตโนมัติ)</p>
+  <div id="status">กำลังเปิดกล้อง...</div>
+  <p style="color: #888; font-size: 14px; margin-top: 5px;">(ถอยกล้องให้เห็น QR Code ชัดๆ ถอดแมสก์/ลดแสงจอ)</p>
   
   <button class="btn-close-popup" onclick="window.close()">ปิดหน้าต่างกล้อง</button>
+
+  <audio id="beep-sound" src="https://www.soundjay.com/buttons/sounds/button-09.mp3" preload="auto"></audio>
 
   <script>
     const html5QrCode = new Html5Qrcode("reader");
     const statusDiv = document.getElementById('status');
-    let lastScan = ""; // กันการสแกนรหัสเดิมซ้ำรัวๆ
+    const beepSound = document.getElementById('beep-sound');
+    let lastScan = ""; 
+
+    // ปรับ config ให้ไม่ต้องจำกัดกรอบแคบๆ (ลบ qrbox ออก เพื่อให้สแกนได้ทั้งจอ)
+    const config = { fps: 10 }; 
 
     html5QrCode.start(
       { facingMode: "environment" },
-      { fps: 10, qrbox: { width: 250, height: 250 } },
+      config,
       (decodedText) => {
         const id = decodedText.trim();
         if (id !== lastScan) {
           lastScan = id;
+          
+          // เล่นเสียงและกระพริบจอ
+          beepSound.play().catch(e => console.log("Audio play prevented"));
+          document.getElementById('reader').classList.add('flash');
+          setTimeout(() => document.getElementById('reader').classList.remove('flash'), 300);
+
           statusDiv.innerHTML = `<span style="color: #198754;">✅ สแกนล่าสุดรหัส: ${id}</span>`;
           
           // ส่งค่ากลับไปยังหน้า Apps Script (หน้าต่างแม่)
@@ -71,15 +89,18 @@
             window.opener.postMessage({ type: 'QR_SCANNED', id: id }, "*");
           }
 
-          // หน่วงเวลา 2 วินาทีก่อนให้สแกนรหัสเดิมได้อีก
+          // หน่วงเวลา 2 วินาที
           setTimeout(() => { 
             lastScan = ""; 
-            statusDiv.innerHTML = "พร้อมสแกนรหัสต่อไป..."; 
+            statusDiv.innerHTML = "🟢 พร้อมสแกนรหัสต่อไป..."; 
           }, 2000);
         }
       }
-    ).catch(err => {
-      statusDiv.innerHTML = `<span style="color: #dc3545;">❌ ไม่สามารถเข้าถึงกล้องได้ กรุณาอนุญาตสิทธิ์</span>`;
+    ).then(() => {
+      // เมื่อกล้องเปิดสำเร็จ
+      statusDiv.innerHTML = "🟢 กล้องพร้อมทำงาน! สแกนได้เลย";
+    }).catch(err => {
+      statusDiv.innerHTML = `<span style="color: #dc3545;">❌ ไม่สามารถเข้าถึงกล้องได้</span>`;
     });
   </script>
 </body>
