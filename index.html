@@ -31,7 +31,7 @@
       color: #6c757d; 
     }
     .btn-close-popup {
-      margin-top: 20px; 
+      margin-top: 15px; 
       padding: 10px 24px; 
       background: #dc3545; 
       color: white; 
@@ -42,7 +42,20 @@
       font-family: 'Sarabun', sans-serif;
       box-shadow: 0 4px 8px rgba(220, 53, 69, 0.2);
     }
-    /* เอฟเฟกต์กระพริบตอนสแกนติด */
+    .btn-switch {
+      margin-top: 15px; 
+      padding: 10px 24px; 
+      background: #0d6efd; 
+      color: white; 
+      border: none; 
+      border-radius: 8px; 
+      cursor: pointer; 
+      font-size: 16px;
+      font-family: 'Sarabun', sans-serif;
+      box-shadow: 0 4px 8px rgba(13, 110, 253, 0.2);
+      display: none; /* ซ่อนไว้ก่อน จะโชว์เมื่อมีกล้อง > 1 ตัว */
+      margin-right: 10px;
+    }
     .flash { animation: flashEffect 0.3s ease-out; }
     @keyframes flashEffect {
       0% { background-color: #4CAF50; }
@@ -56,6 +69,7 @@
   <div id="status">กำลังเปิดกล้อง...</div>
   <p style="color: #888; font-size: 14px; margin-top: 5px;">(ถอยกล้องให้เห็น QR Code ชัดๆ ถอดแมสก์/ลดแสงจอ)</p>
   
+  <button id="btn-switch" class="btn-switch" onclick="switchCamera()">🔄 สลับกล้อง</button>
   <button class="btn-close-popup" onclick="window.close()">ปิดหน้าต่างกล้อง</button>
 
   <audio id="beep-sound" src="https://www.soundjay.com/buttons/sounds/button-09.mp3" preload="auto"></audio>
@@ -64,44 +78,94 @@
     const html5QrCode = new Html5Qrcode("reader");
     const statusDiv = document.getElementById('status');
     const beepSound = document.getElementById('beep-sound');
+    const btnSwitch = document.getElementById('btn-switch');
+    
     let lastScan = ""; 
-
-    // ปรับ config ให้ไม่ต้องจำกัดกรอบแคบๆ (ลบ qrbox ออก เพื่อให้สแกนได้ทั้งจอ)
     const config = { fps: 10 }; 
+    let cameras = [];
+    let currentCameraIndex = 0;
+    let isScanning = false;
 
-    html5QrCode.start(
-      { facingMode: "environment" },
-      config,
-      (decodedText) => {
-        const id = decodedText.trim();
-        if (id !== lastScan) {
-          lastScan = id;
-          
-          // เล่นเสียงและกระพริบจอ
-          beepSound.play().catch(e => console.log("Audio play prevented"));
-          document.getElementById('reader').classList.add('flash');
-          setTimeout(() => document.getElementById('reader').classList.remove('flash'), 300);
-
-          statusDiv.innerHTML = `<span style="color: #198754;">✅ สแกนล่าสุดรหัส: ${id}</span>`;
-          
-          // ส่งค่ากลับไปยังหน้า Apps Script (หน้าต่างแม่)
-          if (window.opener) {
-            window.opener.postMessage({ type: 'QR_SCANNED', id: id }, "*");
-          }
-
-          // หน่วงเวลา 2 วินาที
-          setTimeout(() => { 
-            lastScan = ""; 
-            statusDiv.innerHTML = "🟢 พร้อมสแกนรหัสต่อไป..."; 
-          }, 2000);
+    // 1. ดึงข้อมูลกล้องทั้งหมดในเครื่อง
+    Html5Qrcode.getCameras().then(devices => {
+      if (devices && devices.length) {
+        cameras = devices;
+        
+        // ถ้ามีกล้องมากกว่า 1 ตัว ให้แสดงปุ่มสลับกล้อง
+        if (cameras.length > 1) {
+          btnSwitch.style.display = "inline-block";
         }
+        
+        // พยายามหากล้องหลัง (Environment/Back) เป็นค่าเริ่มต้น
+        let backCamIndex = cameras.findIndex(c => c.label.toLowerCase().includes('back') || c.label.toLowerCase().includes('environment'));
+        if (backCamIndex !== -1) {
+          currentCameraIndex = backCamIndex;
+        }
+        
+        // เริ่มเปิดกล้อง
+        startScanner(cameras[currentCameraIndex].id);
+      } else {
+        statusDiv.innerHTML = `<span style="color: #dc3545;">❌ ไม่พบกล้องในอุปกรณ์นี้</span>`;
       }
-    ).then(() => {
-      // เมื่อกล้องเปิดสำเร็จ
-      statusDiv.innerHTML = "🟢 กล้องพร้อมทำงาน! สแกนได้เลย";
     }).catch(err => {
-      statusDiv.innerHTML = `<span style="color: #dc3545;">❌ ไม่สามารถเข้าถึงกล้องได้</span>`;
+      // แผนสำรอง ถ้าระบบดึงรายชื่อกล้องไม่ได้ ให้บังคับเปิดกล้องหลังแบบเดิม
+      startScanner({ facingMode: "environment" });
     });
+
+    // 2. ฟังก์ชันเปิดกล้อง
+    function startScanner(cameraIdOrConfig) {
+      isScanning = true;
+      html5QrCode.start(
+        cameraIdOrConfig,
+        config,
+        (decodedText) => {
+          const id = decodedText.trim();
+          if (id !== lastScan) {
+            lastScan = id;
+            
+            beepSound.play().catch(e => console.log("Audio play prevented"));
+            document.getElementById('reader').classList.add('flash');
+            setTimeout(() => document.getElementById('reader').classList.remove('flash'), 300);
+
+            statusDiv.innerHTML = `<span style="color: #198754;">✅ สแกนล่าสุดรหัส: ${id}</span>`;
+            
+            if (window.opener) {
+              window.opener.postMessage({ type: 'QR_SCANNED', id: id }, "*");
+            }
+
+            setTimeout(() => { 
+              lastScan = ""; 
+              statusDiv.innerHTML = "🟢 พร้อมสแกนรหัสต่อไป..."; 
+            }, 2000);
+          }
+        }
+      ).then(() => {
+        statusDiv.innerHTML = "🟢 กล้องพร้อมทำงาน! สแกนได้เลย";
+      }).catch(err => {
+        statusDiv.innerHTML = `<span style="color: #dc3545;">❌ ไม่สามารถเข้าถึงกล้องได้</span>`;
+      });
+    }
+
+    // 3. ฟังก์ชันสลับกล้อง
+    function switchCamera() {
+      if (cameras.length > 1 && isScanning) {
+        btnSwitch.disabled = true;
+        statusDiv.innerHTML = "⏳ กำลังสลับกล้อง...";
+        
+        // หยุดกล้องตัวเดิมก่อน
+        html5QrCode.stop().then(() => {
+          isScanning = false;
+          // สลับไปกล้องตัวถัดไปในคิว
+          currentCameraIndex = (currentCameraIndex + 1) % cameras.length;
+          // เปิดกล้องตัวใหม่
+          startScanner(cameras[currentCameraIndex].id);
+          btnSwitch.disabled = false;
+        }).catch(err => {
+          console.error("Error stopping camera", err);
+          btnSwitch.disabled = false;
+        });
+      }
+    }
   </script>
 </body>
 </html>
