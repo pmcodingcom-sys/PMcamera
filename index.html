@@ -87,64 +87,78 @@
     let isScanning = false;
 
     // 1. ดึงข้อมูลกล้องทั้งหมดในเครื่อง
-    Html5Qrcode.getCameras().then(devices => {
-      if (devices && devices.length) {
-        cameras = devices;
-        
-        // ถ้ามีกล้องมากกว่า 1 ตัว ให้แสดงปุ่มสลับกล้อง
-        if (cameras.length > 1) {
-          btnSwitch.style.display = "inline-block";
-        }
-        
-        // พยายามหากล้องหลัง (Environment/Back) เป็นค่าเริ่มต้น
-        let backCamIndex = cameras.findIndex(c => c.label.toLowerCase().includes('back') || c.label.toLowerCase().includes('environment'));
-        if (backCamIndex !== -1) {
-          currentCameraIndex = backCamIndex;
-        }
-        
-        // เริ่มเปิดกล้อง
-        startScanner(cameras[currentCameraIndex].id);
-      } else {
-        statusDiv.innerHTML = `<span style="color: #dc3545;">❌ ไม่พบกล้องในอุปกรณ์นี้</span>`;
-      }
-    }).catch(err => {
-      // แผนสำรอง ถ้าระบบดึงรายชื่อกล้องไม่ได้ ให้บังคับเปิดกล้องหลังแบบเดิม
-      startScanner({ facingMode: "environment" });
-    });
+    Html5Qrcode.getCameras().then(devices => {
+      if (devices && devices.length) {
+        cameras = devices;
+        
+        // ถ้ามีกล้องมากกว่า 1 ตัว ให้แสดงปุ่มสลับกล้อง
+        if (cameras.length > 1) {
+          btnSwitch.style.display = "inline-block";
+        }
+        
+        // พยายามหากล้องหลัง (Environment/Back) จากชื่อ
+        let backCamIndex = cameras.findIndex(c => c.label.toLowerCase().includes('back') || c.label.toLowerCase().includes('environment'));
+        
+        if (backCamIndex !== -1) {
+          // ถ้าเป็น Android หรือระบบที่บอกชื่อกล้องชัดเจน จะเข้าเงื่อนไขนี้
+          currentCameraIndex = backCamIndex;
+          startScanner(cameras[currentCameraIndex].id);
+        } else {
+          // 🚀 [ดัดหลัง iPhone] ถ้าหาชื่อไม่เจอ (เพราะ iOS ซ่อนไว้) 
+          // ห้ามใช้ Index 0 แต่ให้ส่งคำสั่งบังคับเปิดกล้องหลัง (Environment) แทน!
+          startScanner({ facingMode: "environment" });
+        }
+      } else {
+        statusDiv.innerHTML = `<span style="color: #dc3545;">❌ ไม่พบกล้องในอุปกรณ์นี้</span>`;
+      }
+    }).catch(err => {
+      // แผนสำรองสุดท้าย
+      startScanner({ facingMode: "environment" });
+    });
 
-    // 2. ฟังก์ชันเปิดกล้อง
-    function startScanner(cameraIdOrConfig) {
-      isScanning = true;
-      html5QrCode.start(
-        cameraIdOrConfig,
-        config,
-        (decodedText) => {
-          const id = decodedText.trim();
-          if (id !== lastScan) {
-            lastScan = id;
-            
-            beepSound.play().catch(e => console.log("Audio play prevented"));
-            document.getElementById('reader').classList.add('flash');
-            setTimeout(() => document.getElementById('reader').classList.remove('flash'), 300);
+    // 2. ฟังก์ชันเปิดกล้อง
+    function startScanner(cameraIdOrConfig) {
+      isScanning = true;
+      
+      // ปรับจูน config เพิ่มเติมให้เข้ากับ iPhone มากขึ้น
+      const advancedConfig = {
+        fps: 10,
+        videoConstraints: {
+          facingMode: "environment", // ย้ำอีกรอบให้มั่นใจว่าเอากล้องหลัง
+          focusMode: "continuous" // พยายามบังคับออโต้โฟกัส (มีผลกับมือถือบางรุ่น)
+        }
+      };
 
-            statusDiv.innerHTML = `<span style="color: #198754;">✅ สแกนล่าสุดรหัส: ${id}</span>`;
-            
-            if (window.opener) {
-              window.opener.postMessage({ type: 'QR_SCANNED', id: id }, "*");
-            }
+      html5QrCode.start(
+        cameraIdOrConfig,
+        advancedConfig,
+        (decodedText) => {
+          const id = decodedText.trim();
+          if (id !== lastScan) {
+            lastScan = id;
+            
+            beepSound.play().catch(e => console.log("Audio play prevented"));
+            document.getElementById('reader').classList.add('flash');
+            setTimeout(() => document.getElementById('reader').classList.remove('flash'), 300);
 
-            setTimeout(() => { 
-              lastScan = ""; 
-              statusDiv.innerHTML = "🟢 พร้อมสแกนรหัสต่อไป..."; 
-            }, 2000);
-          }
-        }
-      ).then(() => {
-        statusDiv.innerHTML = "🟢 กล้องพร้อมทำงาน! สแกนได้เลย";
-      }).catch(err => {
-        statusDiv.innerHTML = `<span style="color: #dc3545;">❌ ไม่สามารถเข้าถึงกล้องได้</span>`;
-      });
-    }
+            statusDiv.innerHTML = `<span style="color: #198754;">✅ สแกนล่าสุดรหัส: ${id}</span>`;
+            
+            if (window.opener) {
+              window.opener.postMessage({ type: 'QR_SCANNED', id: id }, "*");
+            }
+
+            setTimeout(() => { 
+              lastScan = ""; 
+              statusDiv.innerHTML = "🟢 พร้อมสแกนรหัสต่อไป..."; 
+            }, 2000);
+          }
+        }
+      ).then(() => {
+        statusDiv.innerHTML = "🟢 กล้องพร้อมทำงาน! สแกนได้เลย";
+      }).catch(err => {
+        statusDiv.innerHTML = `<span style="color: #dc3545;">❌ ไม่สามารถเข้าถึงกล้องได้</span>`;
+      });
+    }
 
     // 3. ฟังก์ชันสลับกล้อง
     function switchCamera() {
