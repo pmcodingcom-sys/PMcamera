@@ -70,7 +70,7 @@
   <p style="color: #888; font-size: 14px; margin-top: 5px;">(ถอยกล้องให้เห็น QR Code ชัดๆ ถอดแมสก์/ลดแสงจอ)</p>
   
   <button id="btn-switch" class="btn-switch" onclick="switchCamera()">🔄 สลับกล้อง</button>
-  <button class="btn-close-popup" onclick="window.close()">ปิดหน้าต่างกล้อง</button>
+  <button class="btn-close-popup" onclick="closeScannerWindow()">ปิดหน้าต่างกล้อง</button>
 
   <audio id="beep-sound" src="https://www.soundjay.com/buttons/sounds/button-09.mp3" preload="auto"></audio>
 
@@ -164,6 +164,24 @@
           console.error("Error stopping camera", err);
           btnSwitch.disabled = false;
         });
+      }
+    }
+
+    function closeScannerWindow() {
+      // สำหรับกรณีที่เปิดในคอมพิวเตอร์และส่งข้อมูลกลับไปได้
+      if (window.opener) {
+        window.opener.postMessage({ type: 'CLOSE_POPUP' }, "*");
+        window.close();
+      }
+      
+      // สำหรับ In-App Browser (LINE/Facebook) ที่ใช้วิธีเปลี่ยนหน้า
+      // การย้อนกลับ 1 ขั้น จะพากลับไปที่หน้า Apps Script ทันที
+      if (window.history.length > 1) {
+        window.history.back();
+      } else {
+        // เผื่อไว้กรณี In-App Browser บางตัวไม่ยอม
+        window.close(); 
+        alert("กรุณากดปุ่ม ✖ หรือ < ย้อนกลับ ที่มุมจอด้านบนเพื่อกลับไปหน้าหลักครับ");
       }
     }
   </script>
